@@ -15,24 +15,27 @@ app req = return $
         "/builder/nolen" -> builderNoLen
         "/file/withlen" -> fileWithLen
         "/file/nolen" -> fileNoLen
+        {-
         "/source/withlen" -> sourceWithLen
         "/source/nolen" -> sourceNoLen
-        "/notfound" -> ResponseFile status200 [] "notfound" Nothing
+        -}
+        "/notfound" -> responseFile status200 [] "notfound" Nothing
         x -> index x
 
-builderWithLen = ResponseBuilder
+builderWithLen = responseBuilder
     status200
     [ ("Content-Type", "text/plain")
     , ("Content-Length", "4")
     ]
     $ copyByteString "PONG"
 
-builderNoLen = ResponseBuilder
+builderNoLen = responseBuilder
     status200
     [ ("Content-Type", "text/plain")
     ]
     $ copyByteString "PONG"
 
+{-
 sourceWithLen = ResponseSource
     status200
     [ ("Content-Type", "text/plain")
@@ -45,8 +48,9 @@ sourceNoLen = ResponseSource
     [ ("Content-Type", "text/plain")
     ]
     $ CL.sourceList [C.Chunk $ copyByteString "PONG"]
+-}
 
-fileWithLen = ResponseFile
+fileWithLen = responseFile
     status200
     [ ("Content-Type", "text/plain")
     , ("Content-Length", "4")
@@ -54,14 +58,14 @@ fileWithLen = ResponseFile
     "pong.txt"
     Nothing
 
-fileNoLen = ResponseFile
+fileNoLen = responseFile
     status200
     [ ("Content-Type", "text/plain")
     ]
     "pong.txt"
     Nothing
 
-index p = ResponseBuilder status200 [("Content-Type", "text/html")] $ mconcat $ map copyByteString
+index p = responseBuilder status200 [("Content-Type", "text/html")] $ mconcat $ map copyByteString
     [ "<p><a href='/builder/withlen'>builder withlen</a></p>\n"
     , "<p><a href='/builder/nolen'>builder nolen</a></p>\n"
     , "<p><a href='/file/withlen'>file withlen</a></p>\n"

@@ -8,7 +8,6 @@ module Network.Wai.Internal where
 
 import           Blaze.ByteString.Builder     (Builder)
 import qualified Data.ByteString              as B
-import qualified Data.Conduit                 as C
 import           Data.Text                    (Text)
 import           Data.Typeable                (Typeable)
 #if MIN_VERSION_vault(0,3,0)
@@ -51,7 +50,7 @@ data Request = Request
   ,  pathInfo             :: [Text]
   -- | Parsed query string information
   ,  queryString          :: H.Query
-  ,  requestBody          :: C.Source IO B.ByteString
+  ,  requestBody          :: IO B.ByteString
   -- | A location for arbitrary data to be shared by applications and middleware.
   , vault                 :: Vault
   -- | The size of the request body. In the case of a chunked request body, this may be unknown.
@@ -87,10 +86,14 @@ data Request = Request
 data Response
     = ResponseFile H.Status H.ResponseHeaders FilePath (Maybe FilePart)
     | ResponseBuilder H.Status H.ResponseHeaders Builder
-    | ResponseSource H.Status H.ResponseHeaders (forall b. WithSource IO (C.Flush Builder) b)
+    | ResponseSource H.Status H.ResponseHeaders (forall b. WithSource IO (Chunk Builder) b)
   deriving Typeable
 
-type WithSource m a b = (C.Source m a -> m b) -> m b
+data Chunk a = Chunk a
+             | Flush
+             | EOF
+
+type WithSource m a b = (m (Chunk a) -> m b) -> m b
 
 -- | The size of the request body. In the case of chunked bodies, the size will
 -- not be known.

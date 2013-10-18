@@ -13,6 +13,31 @@ import Network.HTTP.Types.Header
 import qualified Paths_warp
 import qualified Network.Wai.Handler.Warp.Timeout as T
 import qualified Network.Wai.Handler.Warp.FdCache as F
+import Data.IORef
+import qualified Data.ByteString as S
+
+data Source = Source !(IORef ByteString) !(IO ByteString)
+
+readSource :: Source -> IO ByteString
+readSource (Source ibs src) = do
+    bs <- atomicModifyIORef ibs $ \x -> (S.empty, x)
+    if S.null bs
+        then src
+        else return bs
+
+readSourceMax :: Int -> Source -> IO ByteString
+readSourceMax count (Source ibs src) = do
+    bs' <- readIORef ibs
+    bs <-
+        if S.null bs'
+            then src
+            else return bs'
+    let (x, y) = S.splitAt count bs
+    writeIORef ibs y
+    return x
+
+leftoverSource :: ByteString -> Source -> IO ()
+leftoverSource bs (Source ibs _) = writeIORef ibs bs
 
 ----------------------------------------------------------------
 

@@ -54,7 +54,6 @@ module Network.Wai
     , Response
     , responseFile
     , responseBuilder
-    , responseSource
     , responseLBS
       -- ** Other types
     , Application
@@ -63,25 +62,19 @@ module Network.Wai
     , RequestBodyLength (..)
     , WithSource
       -- ** Helper functions
-    , responseToSource
     , responseStatus
       -- ** Defaults
     , defaultRequest
     ) where
 
 import           Blaze.ByteString.Builder     (Builder, fromLazyByteString)
-import           Blaze.ByteString.Builder     (fromByteString)
 import qualified Data.ByteString              as B
 import qualified Data.ByteString.Lazy         as L
 import           Data.ByteString.Lazy.Char8   ()
-import qualified Data.Conduit                 as C
-import qualified Data.Conduit.Binary          as CB
-import qualified Data.Conduit.List            as CL
 import           Data.Monoid                  (mempty)
 import qualified Network.HTTP.Types           as H
 import           Network.Socket               (SockAddr (SockAddrInet))
 import           Network.Wai.Internal
-import qualified System.IO                    as IO
 
 responseFile :: H.Status -> H.ResponseHeaders -> FilePath -> Maybe FilePart -> Response
 responseFile = ResponseFile
@@ -89,29 +82,12 @@ responseFile = ResponseFile
 responseBuilder :: H.Status -> H.ResponseHeaders -> Builder -> Response
 responseBuilder = ResponseBuilder
 
-responseSource :: H.Status -> H.ResponseHeaders -> C.Source IO (C.Flush Builder) -> Response
-responseSource st hs src = ResponseSource st hs ($ src)
-
 responseStatus :: Response -> H.Status
 responseStatus rsp =
     case rsp of
       ResponseFile    s _ _ _ -> s
       ResponseBuilder s _ _   -> s
       ResponseSource  s _ _   -> s
-
-responseToSource :: Response
-                 -> (H.Status, H.ResponseHeaders, WithSource IO (C.Flush Builder) b)
-responseToSource (ResponseSource s h b) = (s, h, b)
-responseToSource (ResponseFile s h fp (Just part)) =
-    (s, h, \f -> IO.withFile fp IO.ReadMode $ \handle -> f $ sourceFilePart handle part C.$= CL.map (C.Chunk . fromByteString))
-responseToSource (ResponseFile s h fp Nothing) =
-    (s, h, \f -> IO.withFile fp IO.ReadMode $ \handle -> f $ CB.sourceHandle handle C.$= CL.map (C.Chunk . fromByteString))
-responseToSource (ResponseBuilder s h b) =
-    (s, h, ($ CL.sourceList [C.Chunk b]))
-
-sourceFilePart :: IO.Handle -> FilePart -> C.Source IO B.ByteString
-sourceFilePart handle (FilePart offset count) =
-    CB.sourceHandleRange handle (Just offset) (Just count)
 
 responseLBS :: H.Status -> H.ResponseHeaders -> L.ByteString -> Response
 responseLBS s h = ResponseBuilder s h . fromLazyByteString
@@ -148,7 +124,7 @@ defaultRequest = Request
     , remoteHost = SockAddrInet 0 0
     , pathInfo = []
     , queryString = []
-    , requestBody = return ()
+    , requestBody = return B.empty
     , vault = mempty
     , requestBodyLength = KnownLength 0
     }

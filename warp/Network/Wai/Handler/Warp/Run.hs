@@ -11,9 +11,6 @@ import Control.Monad (forever, when, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
-import Data.Conduit
-import Data.Conduit.Internal (ResumableSource (..))
-import qualified Data.Conduit.List as CL
 import Data.Conduit.Network (bindPort)
 import Network (sClose, Socket)
 import qualified Network.HTTP.Types as H
@@ -28,6 +25,7 @@ import Network.Wai.Handler.Warp.Settings
 import qualified Network.Wai.Handler.Warp.Timeout as T
 import Network.Wai.Handler.Warp.Types
 import Network.Wai.Handler.Warp.SendFile
+import Data.IORef (newIORef)
 
 #if WINDOWS
 import qualified Control.Concurrent.MVar as MV
@@ -211,8 +209,9 @@ serveConnection :: T.Handle
                 -> Settings
                 -> InternalInfo
                 -> Application -> Connection -> SockAddr-> IO ()
-serveConnection timeoutHandle settings ii app conn remoteHost' =
-    (serveConnection'' $ connSource conn th) `onException` send500
+serveConnection timeoutHandle settings ii app conn remoteHost' = do
+    src <- connSource conn th
+    serveConnection'' src `onException` send500
   where
     th = threadHandle ii
 
@@ -224,7 +223,7 @@ serveConnection timeoutHandle settings ii app conn remoteHost' =
     internalError = responseLBS H.internalServerError500 [(H.hContentType, "text/plain")] "Something went wrong"
 
     serveConnection'' fromClient = do
-        (env, getSource) <- parseRequest conn timeoutHandle remoteHost' fromClient
+        env <- parseRequest conn timeoutHandle remoteHost' fromClient
         case settingsIntercept settings env of
             Nothing -> do
                 -- Let the application run for as long as it wants
@@ -248,24 +247,27 @@ serveConnection timeoutHandle settings ii app conn remoteHost' =
                 -- the number of cores is small.
                 Conc.yield
                 -- flush the rest of the request body
+                {- FIXME
                 requestBody env $$ CL.sinkNull
                 ResumableSource fromClient' _ <- liftIO getSource
+                -}
 
-                when keepAlive $ serveConnection'' fromClient'
+                when keepAlive $ serveConnection'' fromClient
             Just intercept -> do
+                error "FIXME intercept"
+                {-
                 liftIO $ T.pause th
                 ResumableSource fromClient' _ <- liftIO getSource
                 intercept fromClient' conn
+                -}
 
-connSource :: Connection -> T.Handle -> Source IO ByteString
-connSource Connection { connRecv = recv } th = src
-  where
-    src = do
-        bs <- liftIO recv
-        unless (S.null bs) $ do
-            when (S.length bs >= 2048) $ liftIO $ T.tickle th
-            yield bs
-            src
+connSource :: Connection -> T.Handle -> IO Source
+connSource Connection { connRecv = recv } th = do
+    ref <- newIORef S.empty
+    return $! Source ref $ do
+        bs <- recv
+        when (S.length bs >= 2048) $ T.tickle th
+        return bs
 
 -- Copied from: https://github.com/mzero/plush/blob/master/src/Plush/Server/Warp.hs
 setSocketCloseOnExec :: Socket -> IO ()

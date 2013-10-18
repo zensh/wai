@@ -15,9 +15,6 @@ import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B (pack)
 import qualified Data.CaseInsensitive as CI
-import Data.Conduit
-import Data.Conduit.Blaze (builderToByteString)
-import qualified Data.Conduit.List as CL
 import Data.Maybe (isJust, listToMaybe)
 import Data.Monoid (mappend)
 import qualified Network.HTTP.Types as H
@@ -127,6 +124,7 @@ sendResponse settings ii req conn restore (ResponseBuilder s hs b)
 
 ----------------------------------------------------------------
 
+{- FIXME
 sendResponse settings ii req conn restore (ResponseSource s hs withBodyFlush)
   | hasBody s req = withBodyFlush $ \bodyFlush -> restore $ do
       header <- liftIO $ composeHeaderBuilder settings version s hs needsChunked
@@ -154,10 +152,12 @@ sendResponse settings ii req conn restore (ResponseSource s hs withBodyFlush)
     version = httpVersion req
     reqinfo@(isPersist,_) = infoFromRequest req
     (isKeepAlive, needsChunked) = infoFromResponse hs reqinfo
+-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
+{- FIXME
 -- | Use 'connSendAll' to send this data while respecting timeout rules.
 connSink :: Connection -> T.Handle -> Sink ByteString IO ()
 connSink Connection { connSendAll = send } th =
@@ -174,6 +174,7 @@ connSink Connection { connSendAll = send } th =
     -- that a timeout will only ever be executed when Warp is in control. We
     -- also make sure to resume the timeout after the completion of user code
     -- so that we can kill idle connections.
+-}
 
 ----------------------------------------------------------------
 

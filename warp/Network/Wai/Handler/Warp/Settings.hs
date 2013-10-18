@@ -3,7 +3,6 @@ module Network.Wai.Handler.Warp.Settings where
 import Control.Exception
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
-import Data.Conduit
 import Data.Conduit.Network (HostPreference (HostIPv4))
 import GHC.IO.Exception (IOErrorType(..))
 import Network.Wai
@@ -25,7 +24,7 @@ data Settings = Settings
     , settingsOnOpen :: IO () -- ^ What to do when a connection is open. Default: do nothing.
     , settingsOnClose :: IO ()  -- ^ What to do when a connection is close. Default: do nothing.
     , settingsTimeout :: Int -- ^ Timeout value in seconds. Default value: 30
-    , settingsIntercept :: Request -> Maybe (Source IO S.ByteString -> Connection -> IO ())
+    , settingsIntercept :: Request -> Maybe (IO S.ByteString -> Connection -> IO ())
     , settingsManager :: Maybe Manager -- ^ Use an existing timeout manager instead of spawning a new one. If used, 'settingsTimeout' is ignored. Default is 'Nothing'
     , settingsFdCacheDuration :: Int -- ^ Cache duratoin time of file descriptors in seconds. 0 means that the cache mechanism is not used. Default value: 10
     , settingsBeforeMainLoop :: IO ()
