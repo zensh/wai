@@ -141,41 +141,44 @@ sendResponse :: Connection
              -> IndexedHeader -- ^ Indexed header of HTTP request.
              -> Response -- ^ HTTP response including status code and response header.
              -> IO Bool -- ^ Returing True if the connection is persistent.
-sendResponse conn ii restore req reqidxhdr response = restore $ do
-    hs <- addServerAndDate hs0
-    if hasBody s req then do
-        sendRsp conn ver s hs rsp
-        T.tickle th
-        return ret
-      else do
-        sendResponseNoBody conn ver s hs response
-        T.tickle th
-        return isPersist
+sendResponse conn ii restore req reqidxhdr response = do
+    case response of
+        ResponseFile s hs0 path mPart ->
+            restore $ helper s hs0 (const $ RspFile path mPart mRange (T.tickle th))
+        ResponseBuilder s hs0 b -> restore $ helper s hs0 (RspBuilder b)
+        ResponseSource w -> w $ \s hs0 b -> restore $ helper s hs0 (RspSource b th)
   where
-    ver = httpVersion req
-    s = responseStatus response
-    hs0 = responseHeaders response
-    rspidxhdr = indexResponseHeader hs0
     th = threadHandle ii
-    dc = dateCacher ii
-    addServerAndDate = addDate dc . addServer rspidxhdr
     mRange = reqidxhdr ! idxRange
     reqinfo@(isPersist,_) = infoFromRequest req reqidxhdr
-    (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr reqinfo
-    rsp = case response of
-        ResponseFile _ _ path mPart -> RspFile path mPart mRange (T.tickle th)
-        ResponseBuilder _ _ b       -> RspBuilder b needsChunked
-        ResponseSource _ _ fb       -> RspSource fb needsChunked th
-    ret = case response of
-        ResponseFile _ _ _ _  -> isPersist
-        ResponseBuilder _ _ _ -> isKeepAlive
-        ResponseSource _ _ _  -> isKeepAlive
+    ver = httpVersion req
+
+    helper s hs0 rsp' = do
+        hs <- addServerAndDate hs0
+        if hasBody s req then do
+            sendRsp conn ver s hs rsp
+            T.tickle th
+            return ret
+          else do
+            sendResponseNoBody conn ver s hs
+            T.tickle th
+            return isPersist
+      where
+        rsp = rsp' needsChunked
+        rspidxhdr = indexResponseHeader hs0
+        dc = dateCacher ii
+        addServerAndDate = addDate dc . addServer rspidxhdr
+        (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr reqinfo
+        ret = case response of
+            ResponseFile _ _ _ _  -> isPersist
+            ResponseBuilder _ _ _ -> isKeepAlive
+            ResponseSource _      -> isKeepAlive
 
 ----------------------------------------------------------------
 
 data Rsp = RspFile FilePath (Maybe FilePart) (Maybe HeaderValue) (IO ())
          | RspBuilder Builder Bool
-         | RspSource (forall b. WithSource IO (Flush Builder) b) Bool T.Handle
+         | RspSource (Source IO (Flush Builder)) T.Handle Bool
 
 ----------------------------------------------------------------
 
@@ -210,12 +213,12 @@ sendRsp conn ver s hs (RspBuilder b needsChunked) = do
 
 ----------------------------------------------------------------
 
-sendRsp conn ver s hs (RspSource withBodyFlush needsChunked th) = withBodyFlush $ \bodyFlush -> do
+sendRsp conn ver s hs (RspSource bodyFlush th needsChunked) = do
     header <- composeHeaderBuilder ver s hs needsChunked
-    let src = CL.sourceList [header] `mappend` cbody bodyFlush
+    let src = CL.sourceList [header] `mappend` cbody
     src $$ builderToByteString =$ connSink conn th
   where
-    cbody bodyFlush = if needsChunked then body $= chunk else body
+    cbody = if needsChunked then body $= chunk else body
       where
         body = mapOutput (\x -> case x of
                         Flush -> flush
@@ -232,12 +235,8 @@ sendResponseNoBody :: Connection
                    -> H.HttpVersion
                    -> H.Status
                    -> H.ResponseHeaders
-                   -> Response
                    -> IO ()
-sendResponseNoBody conn ver s hs (ResponseSource _ _ withBodyFlush) =
-    withBodyFlush $ \_bodyFlush ->
-       composeHeader ver s hs >>= connSendAll conn
-sendResponseNoBody conn ver s hs _ =
+sendResponseNoBody conn ver s hs =
     composeHeader ver s hs >>= connSendAll conn
 
 ----------------------------------------------------------------

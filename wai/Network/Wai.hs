@@ -67,8 +67,6 @@ module Network.Wai
     , responseSource
     , responseLBS
       -- * Response accessors
-    , responseStatus
-    , responseHeaders
     , responseToSource
     ) where
 
@@ -120,7 +118,7 @@ responseBuilder = ResponseBuilder
 
 -- | Creating 'Response' from 'C.Source'.
 responseSource :: H.Status -> H.ResponseHeaders -> C.Source IO (C.Flush Builder) -> Response
-responseSource st hs src = ResponseSource st hs ($ src)
+responseSource st hs src = ResponseSource $ \f -> f st hs src
 
 -- | Creating 'Response' from 'L.ByteString'. This is a wrapper for
 --   'responseBuilder'.
@@ -129,28 +127,18 @@ responseLBS s h = ResponseBuilder s h . fromLazyByteString
 
 ----------------------------------------------------------------
 
--- | Accessing 'H.Status' in 'Response'.
-responseStatus :: Response -> H.Status
-responseStatus (ResponseFile    s _ _ _) = s
-responseStatus (ResponseBuilder s _ _  ) = s
-responseStatus (ResponseSource  s _ _  ) = s
-
--- | Accessing 'H.Status' in 'Response'.
-responseHeaders :: Response -> H.ResponseHeaders
-responseHeaders (ResponseFile    _ hs _ _) = hs
-responseHeaders (ResponseBuilder _ hs _  ) = hs
-responseHeaders (ResponseSource  _ hs _  ) = hs
-
 -- | Converting the body information in 'Response' to 'Source'.
 responseToSource :: Response
-                 -> (H.Status, H.ResponseHeaders, WithSource IO (C.Flush Builder) b)
-responseToSource (ResponseSource s h b) = (s, h, b)
-responseToSource (ResponseFile s h fp (Just part)) =
-    (s, h, \f -> IO.withFile fp IO.ReadMode $ \handle -> f $ sourceFilePart handle part C.$= CL.map (C.Chunk . fromByteString))
-responseToSource (ResponseFile s h fp Nothing) =
-    (s, h, \f -> IO.withFile fp IO.ReadMode $ \handle -> f $ CB.sourceHandle handle C.$= CL.map (C.Chunk . fromByteString))
-responseToSource (ResponseBuilder s h b) =
-    (s, h, ($ CL.sourceList [C.Chunk b]))
+                 -> WithSource IO (C.Flush Builder) b
+responseToSource (ResponseSource w) f = w f
+responseToSource (ResponseFile s h fp (Just part)) f =
+    IO.withFile fp IO.ReadMode $ \handle -> f s h
+    $ sourceFilePart handle part C.$= CL.map (C.Chunk . fromByteString)
+responseToSource (ResponseFile s h fp Nothing) f =
+    IO.withFile fp IO.ReadMode $ \handle -> f s h
+    $ CB.sourceHandle handle C.$= CL.map (C.Chunk . fromByteString)
+responseToSource (ResponseBuilder s h b) f =
+    f s h $ C.yield $ C.Chunk b
 
 sourceFilePart :: IO.Handle -> FilePart -> C.Source IO B.ByteString
 sourceFilePart handle (FilePart offset count _) =

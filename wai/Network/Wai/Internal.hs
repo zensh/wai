@@ -76,10 +76,10 @@ data Request = Request
 data Response
     = ResponseFile H.Status H.ResponseHeaders FilePath (Maybe FilePart)
     | ResponseBuilder H.Status H.ResponseHeaders Builder
-    | ResponseSource H.Status H.ResponseHeaders (forall b. WithSource IO (C.Flush Builder) b)
+    | ResponseSource (forall b. WithSource IO (C.Flush Builder) b)
   deriving Typeable
 
-type WithSource m a b = (C.Source m a -> m b) -> m b
+type WithSource m a b = (H.Status -> H.ResponseHeaders -> C.Source m a -> m b) -> m b
 
 -- | The size of the request body. In the case of chunked bodies, the size will
 -- not be known.
