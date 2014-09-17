@@ -152,7 +152,6 @@ runTLSSocket TLSSettings {..} set sock app = do
                         gen
                     TLS.contextHookSetLogging ctx tlsLogging
                     TLS.handshake ctx
-                    readBuf <- allocateBuffer bufferSize
                     writeBuf <- allocateBuffer bufferSize
                     let conn = Connection
                             { connSendMany = TLS.sendData ctx . L.fromChunks
@@ -170,7 +169,6 @@ runTLSSocket TLSSettings {..} set sock app = do
                                                 loop $ remaining - B.length x
                                     loop $ fromIntegral len
                             , connClose =
-                                freeBuffer readBuf `finally`
                                 freeBuffer writeBuf `finally`
                                 TLS.bye ctx `finally`
                                 TLS.contextClose ctx
@@ -184,7 +182,6 @@ runTLSSocket TLSSettings {..} set sock app = do
                                             else return x
                                  in handle onEOF go
                             , connSendFileOverride = NotOverride
-                            , connReadBuffer = readBuf
                             , connWriteBuffer = writeBuf
                             , connBufferSize = bufferSize
                             }
@@ -192,7 +189,7 @@ runTLSSocket TLSSettings {..} set sock app = do
                 else
                     case onInsecure of
                         AllowInsecure -> do
-                            conn' <- socketConnection s
+                            conn' <- socketConnection (getBufferPool set) s
                             return (conn'
                                     { connRecv = getNext 4096
                                     }, False)

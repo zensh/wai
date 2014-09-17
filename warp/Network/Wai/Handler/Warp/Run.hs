@@ -42,17 +42,15 @@ import Network.Socket (fdSocket)
 #endif
 
 -- | Default action value for 'Connection'.
-socketConnection :: Socket -> IO Connection
-socketConnection s = do
-    readBuf <- allocateBuffer bufferSize
+socketConnection :: BufferPool -> Socket -> IO Connection
+socketConnection bufferPool s = do
     writeBuf <- allocateBuffer bufferSize
     return Connection {
         connSendMany = Sock.sendMany s
       , connSendAll = Sock.sendAll s
       , connSendFile = defaultSendFile s
-      , connClose = sClose s >> freeBuffer readBuf >> freeBuffer writeBuf
-      , connRecv = receive s readBuf bufferSize
-      , connReadBuffer = readBuf
+      , connClose = sClose s >> freeBuffer writeBuf
+      , connRecv = receive s bufferPool
       , connWriteBuffer = writeBuf
       , connBufferSize = bufferSize
       , connSendFileOverride = Override s
@@ -99,7 +97,7 @@ runSettingsSocket set socket app = do
         (s, sa) <- accept socket
 #endif
         setSocketCloseOnExec s
-        conn <- socketConnection s
+        conn <- socketConnection (settingsBufferPool set) s
         return (conn, sa)
 
     closeListenSocket = sClose socket

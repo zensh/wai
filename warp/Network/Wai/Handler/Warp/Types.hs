@@ -77,6 +77,8 @@ data Connection = Connection
     , connClose    :: IO ()
     , connRecv     :: IO ByteString
     , connReadBuffer       :: Buffer
+    -- ^ NOTE: This is kept just for backwards compatibility, and is no longer
+    -- used at all.
     , connWriteBuffer      :: Buffer
     , connBufferSize       :: BufSize
     , connSendFileOverride :: ConnSendFileOverride

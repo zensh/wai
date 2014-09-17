@@ -12,10 +12,12 @@ import GHC.IO.Exception (IOErrorType(..))
 import qualified Network.HTTP.Types as H
 import Network.Socket (SockAddr)
 import Network.Wai
+import Network.Wai.Handler.Warp.Buffer
 import Network.Wai.Handler.Warp.Timeout
 import Network.Wai.Handler.Warp.Types
 import System.IO (stderr)
 import System.IO.Error (ioeGetErrorType)
+import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 
@@ -57,6 +59,12 @@ data Settings = Settings
       --
       -- Since 2.0.3
     , settingsInstallShutdownHandler :: IO () -> IO ()
+    , settingsBufferPool :: BufferPool
+      -- ^ Buffer pool used for reading data from sockets.
+      --
+      -- Default: allocates a new buffer.
+      --
+      -- Since 3.0.2
     }
 
 -- | The default settings for the Warp server. See the individual settings for
@@ -75,6 +83,7 @@ defaultSettings = Settings
     , settingsBeforeMainLoop = return ()
     , settingsNoParsePath = False
     , settingsInstallShutdownHandler = const $ return ()
+    , settingsBufferPool = unsafePerformIO newBufferPool
     }
 
 -- | Apply the logic provided by 'defaultExceptionHandler' to determine if an

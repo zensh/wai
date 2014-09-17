@@ -43,6 +43,7 @@ module Network.Wai.Handler.Warp (
     -- ** Getters
   , getPort
   , getHost
+  , getBufferPool
     -- ** Accessors
     -- | Note: these accessors are deprecated, please use the @set@ versions instead.
   , settingsPort
@@ -86,6 +87,7 @@ module Network.Wai.Handler.Warp (
   , sendResponse
   ) where
 
+import Network.Wai.Handler.Warp.Buffer (BufferPool)
 import Network.Wai.Handler.Warp.Date
 import Network.Wai.Handler.Warp.FdCache
 import Network.Wai.Handler.Warp.Header
@@ -202,3 +204,9 @@ getHost = settingsHost
 -- Since 3.0.1
 setInstallShutdownHandler :: (IO () -> IO ()) -> Settings -> Settings
 setInstallShutdownHandler x y = y { settingsInstallShutdownHandler = x }
+
+-- | Get the buffer pool.
+--
+-- Since 3.0.2
+getBufferPool :: Settings -> BufferPool
+getBufferPool = settingsBufferPool

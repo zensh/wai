@@ -6,14 +6,13 @@ module Network.Wai.Handler.Warp.Recv (
   ) where
 
 import Control.Applicative ((<$>))
-import Control.Monad (void)
 import qualified Data.ByteString as BS (empty)
-import Data.ByteString.Internal (ByteString(..), mallocByteString)
+import Data.ByteString.Internal (ByteString(..))
 import Data.Word (Word8)
 import Foreign.C.Error (eAGAIN, getErrno, throwErrno)
 import Foreign.C.Types
 import Foreign.ForeignPtr (withForeignPtr)
-import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Ptr (Ptr)
 import GHC.Conc (threadWaitRead)
 import Network.Socket (Socket, fdSocket)
 import System.Posix.Types (Fd(..))
@@ -26,26 +25,19 @@ import Network.Wai.Handler.Warp.Windows
 
 ----------------------------------------------------------------
 
-receive :: Socket -> Buffer -> Int -> IO ByteString
-receive sock buf size = do
-    bytes <- fromIntegral <$> receiveloop sock' buf' size'
-    if bytes == 0 then
-        return BS.empty
-      else do
-        fptr <- mallocByteString bytes
-        void $ withForeignPtr fptr $ \ptr ->
-            c_memcpy ptr buf (fromIntegral bytes)
-        return $! PS fptr 0 bytes
+receive :: Socket -> BufferPool -> IO ByteString
+receive sock bufPool = withBuffer bufPool $ \fptr size -> do
+    let size' = fromIntegral size
+    bytes <- withForeignPtr fptr $ \buf ->
+             fromIntegral <$> receiveloop sock' buf size'
+    let bs = if bytes == 0
+                then BS.empty
+                else PS fptr 0 bytes
+    return (bs, bytes)
   where
     sock' = fdSocket sock
-    buf' = castPtr buf
-    size' = fromIntegral size
 
-#ifdef mingw32_HOST_OS
 receiveloop :: CInt -> Ptr Word8 -> CSize -> IO CInt
-#else
-receiveloop :: CInt -> Ptr CChar -> CSize -> IO CInt
-#endif
 receiveloop sock buf size = do
 #ifdef mingw32_HOST_OS
     bytes <- windowsThreadBlockHack $ fmap fromIntegral $ readRawBufferPtr "recv" (FD sock 1) buf 0 size
@@ -64,7 +56,4 @@ receiveloop sock buf size = do
 
 -- fixme: the type of the return value
 foreign import ccall unsafe "recv"
-    c_recv :: CInt -> Ptr CChar -> CSize -> CInt -> IO CInt
-
-foreign import ccall unsafe "string.h memcpy"
-    c_memcpy :: Ptr Word8 -> Ptr Word8 -> CSize -> IO (Ptr Word8)
+    c_recv :: CInt -> Ptr Word8 -> CSize -> CInt -> IO CInt
