@@ -270,6 +270,7 @@ enqueueRsp ctx@Context{..} ii settings stid (ResponseBuilder st hdr0 bb) = do
     einfo = encodeInfo setEndStream stid
     datframe = encodeFrame einfo $ DataFrame $ toByteString bb
 
+-- fixme: filepart
 enqueueRsp ctx@Context{..} ii settings stid (ResponseFile st hdr0 file _) = do
     hdrframe <- headerFrame ctx ii settings stid st hdr0
     atomically $ writeTQueue outputQ $ RspFrame hdrframe
@@ -290,6 +291,7 @@ enqueueRsp ctx@Context{..} ii settings stid (ResponseFile st hdr0 file _) = do
             atomically $ writeTQueue outputQ $ RspFrame datframe
             loop hdl
 
+-- HTTP/2 does not support ResponseStream and ResponseRaw.
 enqueueRsp _ _ _ _ _ = do -- fixme
     putStrLn "enqueueRsp"
     return ResponseReceived
