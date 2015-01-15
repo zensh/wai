@@ -9,23 +9,24 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.STM
 import Control.Monad (when, unless, void)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as B8
 import Data.CaseInsensitive (foldedCase, mk)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef, modifyIORef)
 import Data.IntMap (IntMap)
-import qualified Data.IntMap as M
 import Data.Maybe (fromJust)
 import Data.Monoid (mempty)
-import qualified Network.HTTP.Types as H
 import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Handler.Warp.Header
 import Network.Wai.Handler.Warp.Response
-import qualified Network.Wai.Handler.Warp.Settings as S (Settings, settingsNoParsePath, settingsServerName)
 import Network.Wai.Handler.Warp.Types
 import Network.Wai.Internal (Request(..), Response(..), ResponseReceived(..))
 import System.IO (withFile, IOMode(..))
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as B8
+import qualified Data.IntMap as M
+import qualified Network.HTTP.Types as H
+import qualified Network.Wai.Handler.Warp.Settings as S (Settings, settingsNoParsePath, settingsServerName)
+import qualified Network.Wai.Handler.Warp.Timeout as T
 
 import Network.HTTP2
 import Network.HPACK
@@ -87,7 +88,7 @@ http2 conn ii addr transport settings src app = do
     void . forkIO $ frameReader ctx mkreq enqout src app
     let rsp = RspFrame $ settingsFrame id []
     atomically $ writeTQueue (outputQ ctx) rsp
-    frameSender conn ctx
+    frameSender conn ii ctx
   where
     checkTLS = case transport of
         TCP -> inadequateSecurity conn
@@ -189,8 +190,22 @@ switch Context{..} Frame{ framePayload = GoAwayFrame _ _ _,
 {-
 -- resetting
 switch Context{..} (RSTStreamFrame _)     = undefined
+-}
+
 -- ponging
-switch Context{..} (PingFrame _)          = undefined
+switch Context{..} Frame{ framePayload = PingFrame opaque,
+                          frameHeader = FrameHeader{..} } = do
+    putStrLn "PingFrame"
+    -- fixme: case where sid is not 0
+    if testAck flags then do
+        putStrLn "Ping with the ACK flag, strange."
+        return None
+      else do
+        let rsp = RspFrame $ pingFrame opaque
+        atomically $ writeTQueue outputQ rsp
+        return None
+
+{-
 -- cleanup
 switch Context{..} (GoAwayFrame _ _ _)    = undefined
 
@@ -299,11 +314,12 @@ enqueueRsp _ _ _ _ _ = do -- fixme
 ----------------------------------------------------------------
 
 -- fixme: packing bytestrings
-frameSender :: Connection -> Context -> IO ()
-frameSender Connection{..} Context{..} = loop
+frameSender :: Connection -> InternalInfo -> Context -> IO ()
+frameSender Connection{..} InternalInfo{..} Context{..} = loop
   where
     loop = do
         cont <- readQ >>= send
+        T.tickle threadHandle
         when cont loop
     readQ = atomically $ readTQueue outputQ
     send (RspFrame bs) = do
@@ -317,6 +333,11 @@ settingsFrame :: (FrameFlags -> FrameFlags) -> SettingsList -> ByteString
 settingsFrame func alist = encodeFrame einfo $ SettingsFrame alist
   where
     einfo = encodeInfo func 0
+
+pingFrame :: ByteString -> ByteString
+pingFrame bs = encodeFrame einfo $ PingFrame bs
+  where
+    einfo = encodeInfo setAck 0
 
 headerFrame :: Context -> InternalInfo -> S.Settings -> Int -> H.Status -> H.ResponseHeaders -> IO ByteString
 headerFrame Context{..} ii settings stid st hdr0 = do
