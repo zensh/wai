@@ -135,6 +135,7 @@ frameReader ctx mkreq enqout src app = do
                     None -> frameReader ctx mkreq enqout src app
                     Fork inpQ stid -> do
                         void . forkIO $ reqReader mkreq enqout inpQ stid app
+                        -- fixme: T.registerKillThread or pooling?
                         frameReader ctx mkreq enqout src app
 
 switch :: Context -> Frame -> IO Next
@@ -223,6 +224,7 @@ switch _ Frame{..} = do
 
 ----------------------------------------------------------------
 
+-- FIXME: looping for request body?
 reqReader :: MkReq -> EnqRsp -> TQueue Req -> Int -> Application -> IO ()
 reqReader mkreq enqout inpq stid app = do
     frag <- atomically $ readTQueue inpq
