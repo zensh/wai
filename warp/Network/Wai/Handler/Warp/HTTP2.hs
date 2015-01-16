@@ -5,7 +5,7 @@ module Network.Wai.Handler.Warp.HTTP2 (isHTTP2, http2) where
 
 import Blaze.ByteString.Builder
 import Control.Arrow (first)
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.STM
 import Control.Monad (when, unless, void)
 import Data.ByteString (ByteString)
@@ -21,6 +21,7 @@ import Network.Wai.Handler.Warp.Response
 import Network.Wai.Handler.Warp.Types
 import Network.Wai.Internal (Request(..), Response(..), ResponseReceived(..))
 import System.IO (withFile, IOMode(..))
+import qualified Control.Exception as E
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.IntMap as M
@@ -85,10 +86,10 @@ http2 conn ii addr transport settings src app = do
     ctx <- newContext
     let enqout = enqueueRsp ctx ii settings
         mkreq = mkRequest settings addr
-    void . forkIO $ frameReader ctx mkreq enqout src app
+    tid <- forkIO $ frameReader ctx mkreq enqout src app
     let rsp = RspFrame $ settingsFrame id []
     atomically $ writeTQueue (outputQ ctx) rsp
-    frameSender conn ii ctx
+    frameSender conn ii ctx `E.finally` killThread tid
   where
     checkTLS = case transport of
         TCP -> inadequateSecurity conn
